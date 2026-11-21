@@ -25,6 +25,7 @@ class OllamaClient:
     def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout: float = 300):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._thinks: dict[str, bool] = {}
 
     def _open(self, method: str, path: str, body: dict | None = None, timeout: float | None = None):
         data = json.dumps(body).encode() if body is not None else None
@@ -67,8 +68,27 @@ class OllamaClient:
     def remove(self, name: str) -> None:
         self._json("DELETE", "/api/delete", {"name": name}, timeout=30)
 
-    def chat(self, model: str, messages: list[dict], json: bool = False) -> str:  # noqa: A002
+    def _is_thinking_model(self, model: str) -> bool:
+        """Ask /api/show once per model whether it has the 'thinking' capability."""
+        if model not in self._thinks:
+            try:
+                info = self._json("POST", "/api/show", {"model": model}, timeout=10)
+                caps = info.get("capabilities") or []
+                self._thinks[model] = "thinking" in caps
+            except OllamaDown:
+                return False  # don't cache; chat will raise if it is really down
+            except Exception:
+                self._thinks[model] = False
+        return self._thinks[model]
+
+    def chat(self, model: str, messages: list[dict], json: bool = False,  # noqa: A002
+             think: bool | None = None) -> str:
         body = {"model": model, "messages": messages, "stream": False}
+        if think is None:
+            if self._is_thinking_model(model):
+                body["think"] = False
+        else:
+            body["think"] = bool(think)
         if json:
             body["format"] = "json"
         data = self._json("POST", "/api/chat", body)

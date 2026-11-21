@@ -67,3 +67,42 @@ def test_audit_log_appends_jsonl_and_never_raises_on_unicode(tmp_path):
     log.event("test2", cfg=cfg, n=1)
     lines = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()
     assert json.loads(lines[0])["kind"] == "test" and json.loads(lines[1])["n"] == 1
+
+
+def _chat_bodies(srv):
+    return [json.loads(b) for (_m, p, b) in srv.seen if p == "/api/chat"]
+
+
+def test_thinking_model_gets_think_false_and_show_is_cached(fake_ollama):
+    fake_ollama.routes[("POST", "/api/show")] = {"capabilities": ["completion", "thinking"]}
+    fake_ollama.routes[("POST", "/api/chat")] = {"message": {"content": "{}"}}
+    c = OllamaClient(fake_ollama.url)
+    c.chat("qwen3:4b", [{"role": "user", "content": "x"}], json=True)
+    c.chat("qwen3:4b", [{"role": "user", "content": "y"}], json=True)
+    bodies = _chat_bodies(fake_ollama)
+    assert all(b["think"] is False for b in bodies)
+    assert sum(1 for (_m, p, _b) in fake_ollama.seen if p == "/api/show") == 1
+
+
+def test_non_thinking_model_sends_no_think(fake_ollama):
+    fake_ollama.routes[("POST", "/api/show")] = {"capabilities": ["completion"]}
+    fake_ollama.routes[("POST", "/api/chat")] = {"message": {"content": "ok"}}
+    OllamaClient(fake_ollama.url).chat("m", [{"role": "user", "content": "x"}], json=True)
+    assert "think" not in _chat_bodies(fake_ollama)[-1]
+
+
+def test_show_failure_sends_nothing(fake_ollama):
+    # no /api/show route -> 404
+    fake_ollama.routes[("POST", "/api/chat")] = {"message": {"content": "ok"}}
+    OllamaClient(fake_ollama.url).chat("m", [{"role": "user", "content": "x"}])
+    assert "think" not in _chat_bodies(fake_ollama)[-1]
+
+
+def test_explicit_think_is_sent_as_given_without_show(fake_ollama):
+    fake_ollama.routes[("POST", "/api/chat")] = {"message": {"content": "ok"}}
+    c = OllamaClient(fake_ollama.url)
+    c.chat("m", [{"role": "user", "content": "x"}], think=True)
+    c.chat("m", [{"role": "user", "content": "x"}], think=False)
+    bodies = _chat_bodies(fake_ollama)
+    assert bodies[0]["think"] is True and bodies[1]["think"] is False
+    assert not any(p == "/api/show" for (_m, p, _b) in fake_ollama.seen)
