@@ -1,12 +1,14 @@
 import inspect
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from jarvis_local.leads import drafts, score, sources, store
 from jarvis_local.leads.score import Offer
 from jarvis_local.leads.store import Lead, LeadStore
 from jarvis_local.ollama import ModelInfo
 
+HW = SimpleNamespace(ram_total_gb=16, ram_free_gb=8, disk_free_gb=100, cpus=8, gpu=None)
 OFFERS = [Offer("recv", "AI receptionist", "answers missed calls")]
 
 
@@ -15,7 +17,7 @@ class FakeClient:
         self.reply, self.calls = reply, []
 
     def list(self):
-        return [ModelInfo("small", 1), ModelInfo("big", 9)]
+        return [ModelInfo("llama3.2:1b", int(1.3 * 1024 ** 3)), ModelInfo("llama3.2:3b", 2 * 1024 ** 3)]
 
     def chat(self, model, messages, json=False):
         self.calls.append(model)
@@ -73,21 +75,21 @@ def test_reddit_search_uses_fetch_no_network():
 
 def test_score_match_and_threshold():
     c = FakeClient('{"offer_id":"recv","score":0.9}')
-    assert score.match(L(), OFFERS, c) == ("recv", 0.9)
-    assert c.calls == ["small"]
+    assert score.match(L(), OFFERS, c, hw=HW) == ("recv", 0.9)
+    assert c.calls == ["llama3.2:1b"]  # fast tier
     low = FakeClient('{"offer_id":"recv","score":0.3}')
-    assert score.match(L(), OFFERS, low)[0] is None
-    assert score.match(L(), OFFERS, FakeClient("not json")) == (None, 0.0)
-    assert score.match(L(), OFFERS, FakeClient('{"offer_id":"zzz","score":0.9}'))[0] is None
+    assert score.match(L(), OFFERS, low, hw=HW)[0] is None
+    assert score.match(L(), OFFERS, FakeClient("not json"), hw=HW) == (None, 0.0)
+    assert score.match(L(), OFFERS, FakeClient('{"offer_id":"zzz","score":0.9}'), hw=HW)[0] is None
 
 
 def test_below_threshold_no_draft():
     c = FakeClient("hi")
-    assert drafts.suggest(L(), OFFERS[0], c, score=0.4) is None
-    assert drafts.suggest(L(), None, c, score=0.9) is None
+    assert drafts.suggest(L(), OFFERS[0], c, score=0.4, hw=HW) is None
+    assert drafts.suggest(L(), None, c, score=0.9, hw=HW) is None
     assert c.calls == []
-    d = drafts.suggest(L(), OFFERS[0], c, score=0.8)
-    assert d.text == "hi" and d.url == "https://x/1" and c.calls == ["big"]
+    d = drafts.suggest(L(), OFFERS[0], c, score=0.8, hw=HW)
+    assert d.text == "hi" and d.url == "https://x/1" and c.calls == ["llama3.2:3b"]  # balanced tier
 
 
 def test_no_function_sends_a_social_message():

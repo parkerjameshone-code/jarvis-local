@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,6 +27,16 @@ class Lead:
 
 def _norm(s: str) -> str:
     return (s or "").strip().lower().rstrip("/")
+
+
+def canonical_url(url: str) -> str:
+    """Same post, same key: drop fragment, tracking params and the trailing slash."""
+    u = urllib.parse.urlsplit((url or "").strip())
+    q = [(k, v) for k, v in urllib.parse.parse_qsl(u.query, keep_blank_values=True)
+         if not k.lower().startswith("utm_") and k.lower() not in ("ref", "share_id")]
+    path = u.path.rstrip("/")
+    return urllib.parse.urlunsplit((u.scheme.lower(), u.netloc.lower(), path,
+                                    urllib.parse.urlencode(q), ""))
 
 
 class LeadStore:
@@ -54,6 +65,7 @@ class LeadStore:
         """True if stored; False for a duplicate url or a suppressed lead."""
         if not lead.url or self.is_suppressed(lead):
             return False
+        lead.url = canonical_url(lead.url)
         cur = self.con.execute(
             "INSERT OR IGNORE INTO leads(source,url,author,text,found_at) VALUES(?,?,?,?,?)",
             (lead.source, lead.url, lead.author, lead.text, lead.found_at))
@@ -90,5 +102,6 @@ class LeadStore:
         self.con.commit()
 
     def save_draft(self, lead_id: int, text: str) -> None:
-        self.con.execute("UPDATE leads SET draft=?, status='drafted' WHERE id=?", (text, lead_id))
+        self.con.execute("UPDATE leads SET draft=?, status='drafted' WHERE id=? AND status IN ('new','drafted')",
+                         (text, lead_id))
         self.con.commit()

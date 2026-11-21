@@ -16,15 +16,13 @@ class Draft:
 
 
 def suggest(lead, offer: Offer | None, client, score: float = 1.0, model: str | None = None,
-            voice: str = "") -> Draft | None:
+            voice: str = "", hw=None) -> Draft | None:
     """Draft a short, helpful reply. No offer or score < 0.5 -> None."""
     if offer is None or score < THRESHOLD:
         return None
     if model is None:
-        models = client.list()
-        if not models:
-            raise RuntimeError("No local model installed.")
-        model = max(models, key=lambda m: m.size_bytes).name
+        from .. import hardware, router
+        model = router.choose("draft", client.list(), hw or hardware.snapshot())
     msgs = [
         {"role": "system", "content": "Write a short, friendly, genuinely helpful reply to this public post "
          "(max 60 words). Help first; mention the offer lightly and only if it fits. No hype, no links, "

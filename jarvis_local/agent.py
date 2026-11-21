@@ -8,6 +8,7 @@ from typing import Callable
 from . import router, tools
 
 MAX_STEPS = 12
+MAX_APPROVAL_CHARS = 2000  # what the owner approves is shown in full, never cut off
 
 SYSTEM = (
     "You are JARVIS, a local assistant. Work toward the goal one step at a time. "
@@ -91,7 +92,11 @@ class Agent:
             return f"Refused: {name} is never allowed."
         self.ctx.approved = False
         if tool.risk == "ask":
-            if not approve(f"{name} {json.dumps(args)[:300]}"):
+            shown = json.dumps(args, ensure_ascii=True)
+            if len(shown) > MAX_APPROVAL_CHARS:
+                rep.steps.append(Step(name, args, "refused", "arguments too long to review"))
+                return "Refused: arguments too long to show for approval."
+            if not approve(f"{name} {shown}"):
                 rep.steps.append(Step(name, args, "skipped", "not approved"))
                 return "The owner said no. Skipped."
             self.ctx.approved = True

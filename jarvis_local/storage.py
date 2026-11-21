@@ -91,6 +91,33 @@ def _is_protected(path: Path, protected: list[Path]) -> bool:
             continue
         if rp == prr or prr in rp.parents or rp in prr.parents:
             return True
+    return _protected_by_location(rp, home)
+
+
+_USER_FOLDERS = {"documents", "desktop", "pictures", "videos", "music", ".ssh", ".gnupg"}
+
+
+def _protected_by_location(rp: Path, home: Path) -> bool:
+    """Home's parents and sibling profiles, system data, user folders, app data, and any git project."""
+    if rp in home.parents or rp.parent == home.parent:
+        return True
+    if len(rp.parts) > 1 and rp.parts[1].lower() == "programdata":
+        return True
+    try:
+        rel = [x.lower() for x in rp.relative_to(home).parts]
+    except ValueError:
+        rel = []
+    if any(x in _USER_FOLDERS for x in rel[:2]):
+        return True
+    if rel and (rel[0] in {"appdata", ".ollama"} or rel[0].startswith("onedrive")) and len(rel) <= 2:
+        return True
+    try:
+        if any((a / ".git").exists() for a in (rp, *rp.parents)):
+            return True
+        if rp.is_dir() and (any(rp.glob("*/.git")) or any(rp.glob("*/*/.git"))):
+            return True
+    except OSError:
+        return True
     return False
 
 

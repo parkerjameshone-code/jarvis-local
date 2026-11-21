@@ -16,7 +16,7 @@ def hw(ram=16, disk=100):
 
 
 def test_catalog_small_and_valid():
-    assert RECOMMENDED and all(r.approx_gb <= 4 and r.tier in {"fast", "balanced", "deep"} for r in RECOMMENDED)
+    assert RECOMMENDED and all(r.approx_gb <= 4 and r.tier in {"fast", "balanced", "deep", "embed"} for r in RECOMMENDED)
 
 
 def test_ok():

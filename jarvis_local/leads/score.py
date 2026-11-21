@@ -14,16 +14,24 @@ class Offer:
     description: str = ""
 
 
-def _fast_model(client, model):
+def scoring_model(installed, hw) -> str:
+    """The router's pick for the fast tier; if no fast model is installed, the balanced one
+    (still never an embedding model, and always one that fits this machine)."""
+    from .. import router
+    try:
+        return router.choose("classify", installed, hw)
+    except router.NoModel:
+        return router.choose("chat", installed, hw)
+
+
+def _fast_model(client, model, hw=None):
     if model:
         return model
-    models = client.list()
-    if not models:
-        raise RuntimeError("No local model installed.")
-    return min(models, key=lambda m: m.size_bytes).name
+    from .. import hardware
+    return scoring_model(client.list(), hw or hardware.snapshot())
 
 
-def match(lead, offers: list[Offer], client, model: str | None = None) -> tuple[str | None, float]:
+def match(lead, offers: list[Offer], client, model: str | None = None, hw=None) -> tuple[str | None, float]:
     """Return (offer_id or None, score 0-1). Below 0.5 -> no offer."""
     if not offers:
         return None, 0.0
@@ -36,7 +44,7 @@ def match(lead, offers: list[Offer], client, model: str | None = None) -> tuple[
         {"role": "user", "content": f"Offers:\n{menu}\n\nPost:\n{lead.text[:1500]}"},
     ]
     try:
-        data = json.loads(client.chat(_fast_model(client, model), msgs, json=True))
+        data = json.loads(client.chat(_fast_model(client, model, hw), msgs, json=True))
         score = max(0.0, min(1.0, float(data.get("score", 0))))
         oid = data.get("offer_id")
     except Exception as e:

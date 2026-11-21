@@ -70,6 +70,10 @@ class EmailStore:
                         (email.strip().lower(),))
         self.db.commit()
 
+    def mark_replied(self, email: str) -> None:
+        """They answered: stop all follow-ups (same effect as suppression)."""
+        self.suppress(email)
+
     def is_suppressed(self, email: str) -> bool:
         return self.db.execute("SELECT 1 FROM suppressed WHERE email=?",
                                (email.strip().lower(),)).fetchone() is not None
@@ -144,6 +148,9 @@ def send_due(store: EmailStore, smtp_factory, cfg, today: date) -> SendReport:
         return rep
     if not str(getattr(cfg, "postal_address", "") or "").strip():
         rep.reason = "postal address missing"
+        return rep
+    if not str(getattr(cfg, "email_from", "") or "").strip():
+        rep.reason = "from address missing"
         return rep
     first = store.first_send_day()
     cap = min(cfg.email_daily_cap, warmup((today - first).days if first else 0))

@@ -19,6 +19,7 @@ RECOMMENDED: list[Rec] = [
     Rec("qwen2.5:3b", "balanced", 1.9),
     Rec("qwen3:4b", "deep", 2.6),
     Rec("gemma3:4b", "deep", 3.3),
+    Rec("nomic-embed-text", "embed", 0.3),  # memory's embedder; the router never chats with it
 ]
 
 

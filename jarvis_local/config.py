@@ -23,6 +23,7 @@ class Config:
     smtp_host: str = ""
     smtp_port: int = 587
     project_dirs: list = field(default_factory=list)
+    offers: list = field(default_factory=list)  # [[offers]] tables: id, name, description, link
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Config":

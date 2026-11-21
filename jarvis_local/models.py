@@ -1,6 +1,7 @@
 """Model manager: decide whether a pull is safe, then pull."""
 from __future__ import annotations
 
+from .catalog import Rec
 from .ollama import OllamaClient
 from .router import fits
 
@@ -25,5 +26,29 @@ def can_pull(rec, hw, installed, cfg) -> tuple[bool, str]:
     return True, f"OK: ~{gb:.1f} GB, {left:.1f} GB disk left after."
 
 
-def pull(name: str, cfg, on_progress=None, client: OllamaClient | None = None) -> None:
-    (client or OllamaClient(cfg.ollama_url)).pull(name, on_progress)
+class PullTooBig(Exception):
+    """The real download size (reported by Ollama) is over the disk or model budget."""
+
+
+def pull(name: str, cfg, on_progress=None, client: OllamaClient | None = None,
+         hw=None, installed=None) -> None:
+    """Pull with visible progress. If hw/installed are given, the download size Ollama reports
+    is checked against the same limits as can_pull, and the pull is aborted if it is over."""
+    state = {"checked": False, "last": -1}
+
+    def progress(msg: dict) -> None:
+        total = msg.get("total")
+        if total and not state["checked"] and hw is not None:
+            state["checked"] = True
+            ok, why = can_pull(Rec(name, "", total / GB), hw, installed or [], cfg)
+            if not ok:
+                raise PullTooBig(why)
+        if total and msg.get("completed") is not None:
+            pct = int(100 * msg["completed"] / total) // 10 * 10
+            if pct != state["last"]:
+                state["last"] = pct
+                print(f"pulling {name}: {pct}%", flush=True)
+        if on_progress:
+            on_progress(msg)
+
+    (client or OllamaClient(cfg.ollama_url)).pull(name, progress)

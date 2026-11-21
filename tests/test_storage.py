@@ -23,7 +23,8 @@ def test_trash_approved_goes_to_bin(tmp_path, monkeypatch, bin_calls):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
-    f = tmp_path / "a.bin"
+    (tmp_path / "work").mkdir()
+    f = tmp_path / "work" / "a.bin"
     f.write_bytes(b"x")
     out = storage.trash([f], approved=True)
     assert out[0].startswith("trashed") and bin_calls == [str(f)]

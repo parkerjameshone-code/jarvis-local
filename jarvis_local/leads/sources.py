@@ -56,9 +56,21 @@ def parse_youtube_comments(data: dict) -> list[Lead]:
 
 
 def youtube_comments(query: str, api_key: str, limit: int = 25, fetch=_get_json) -> list[Lead]:
-    q = urllib.parse.urlencode({"part": "snippet", "searchTerms": query, "maxResults": min(limit, 100),
-                                "order": "time", "key": api_key})
-    return parse_youtube_comments(fetch("https://www.googleapis.com/youtube/v3/commentThreads?" + q))
+    """Two steps (the API needs a videoId): find recent videos, then search each one's comments."""
+    n = min(limit, 100)
+    sq = urllib.parse.urlencode({"part": "id", "type": "video", "order": "date", "q": query,
+                                 "maxResults": min(n, 10), "key": api_key})
+    found = fetch("https://www.googleapis.com/youtube/v3/search?" + sq)
+    ids = [(i.get("id") or {}).get("videoId") for i in found.get("items", [])]
+    out: list[Lead] = []
+    for vid in (v for v in ids if v):
+        cq = urllib.parse.urlencode({"part": "snippet", "videoId": vid, "searchTerms": query,
+                                     "maxResults": n, "key": api_key})
+        out.extend(parse_youtube_comments(
+            fetch("https://www.googleapis.com/youtube/v3/commentThreads?" + cq)))
+        if len(out) >= limit:
+            break
+    return out[:limit]
 
 
 class BrowserSearch:

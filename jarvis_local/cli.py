@@ -54,18 +54,21 @@ def _tool(ctx, name, args, yes) -> int:
             return 0
         ctx.approved = True
     try:
-        print(t.fn(ctx, args))
+        out = t.fn(ctx, args)
+        print(out)
     finally:
         ctx.approved = False
-    return 0
+    return 1 if str(out).startswith("refused") else 0
 
 
 def main(argv=None, client=None, cfg=None, yes=_yes, hw=None) -> int:
+    for s in (sys.stdout, sys.stderr):  # real post text has emoji; never crash on a cp1252 console
+        getattr(s, "reconfigure", lambda **k: None)(errors="replace")
     args = _parser().parse_args(argv)
-    cfg = cfg or Config.load()
-    client = client or OllamaClient(cfg.ollama_url)
-    ctx = tools.Ctx(client, cfg, hw=hw)
     try:
+        cfg = cfg or Config.load()
+        client = client or OllamaClient(cfg.ollama_url)
+        ctx = tools.Ctx(client, cfg, hw=hw)
         if not client.available():
             print(DOWN)
             return 1

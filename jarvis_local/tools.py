@@ -10,7 +10,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
-from . import catalog, hardware, models, packs, shell, storage
+from . import catalog, hardware, log, models, packs, router, shell, storage
 from .leads import drafts, score, sources
 from .leads import email as lemail
 from .leads.store import LeadStore
@@ -92,13 +92,19 @@ def _models_pull(ctx, a):
     ok, why = models.can_pull(rec, ctx.hardware(), ctx.client.list(), ctx.cfg)
     if not ok:
         return "refused: " + why
-    models.pull(name, ctx.cfg, client=ctx.client)
+    try:
+        models.pull(name, ctx.cfg, client=ctx.client, hw=ctx.hardware(), installed=ctx.client.list())
+    except models.PullTooBig as e:
+        log.event("models_pull", cfg=ctx.cfg, name=name, result="refused", reason=str(e))
+        return "refused: " + str(e)
+    log.event("models_pull", cfg=ctx.cfg, name=name, result="pulled")
     return f"pulled {name}. {why}"
 
 
 def _models_remove(ctx, a):
     name = _need(a, "name")
     ctx.client.remove(name)
+    log.event("models_remove", cfg=ctx.cfg, name=name)
     return f"removed {name}"
 
 
@@ -118,12 +124,15 @@ def _storage_trash(ctx, a):
     if isinstance(paths, str):
         paths = [paths]
     prot = [Path(ctx.cfg.data_dir), *ctx.cfg.project_dirs]
-    return "\n".join(storage.trash(paths, approved=ctx.approved, protected=prot))
+    results = storage.trash(paths, approved=ctx.approved, protected=prot)
+    log.event("trash", cfg=ctx.cfg, results=results)
+    return "\n".join(results)
 
 
 def _shell_run(ctx, a):
     cmd = _need(a, "cmd")
-    r = shell.run(cmd, approved=ctx.approved, visible=bool(a.get("visible", True)))
+    # The agent cannot ask for a hidden run: commands always show in a window.
+    r = shell.run(cmd, approved=ctx.approved, visible=True, cfg=ctx.cfg)
     return f"exit {r.code}\n{r.out[:4000]}"
 
 
@@ -175,11 +184,18 @@ def _leads_draft(ctx, a):
     lead = store.get(int(_need(a, "lead_id")))
     if lead is None:
         return "no such lead"
-    offers = [score.Offer(o["id"], o["name"], o.get("description", "")) for o in a.get("offers", [])]
-    oid, sc = score.match(lead, offers, ctx.client)
+    if store.is_suppressed(lead):
+        return "refused: this person is on the do-not-contact list"
+    if lead.status not in ("new", "drafted"):
+        return f"no draft: lead is already {lead.status}"
+    # Offers come only from the owner's private config, never from the model's arguments.
+    offers = [score.Offer(str(o.get("id", "")), str(o.get("name", "")), str(o.get("description", "")))
+              for o in (ctx.cfg.offers or []) if isinstance(o, dict)]
+    installed, hw = ctx.client.list(), ctx.hardware()
+    oid, sc = score.match(lead, offers, ctx.client, model=score.scoring_model(installed, hw))
     store.save_match(lead.id, oid, sc)
     offer = next((o for o in offers if o.id == oid), None)
-    d = drafts.suggest(lead, offer, ctx.client, sc)
+    d = drafts.suggest(lead, offer, ctx.client, sc, model=router.choose("draft", installed, hw))
     if d is None:
         return f"score {sc:.2f}: no draft (below threshold)"
     store.save_draft(lead.id, d.text)
@@ -188,6 +204,7 @@ def _leads_draft(ctx, a):
 
 def _email_send_due(ctx, a):
     rep = lemail.send_due(ctx.email_store(), ctx.smtp(), ctx.cfg, date.today())
+    log.event("email_send_due", cfg=ctx.cfg, sent=rep.sent, skipped=rep.skipped, reason=rep.reason)
     return f"sent {rep.sent}, skipped {rep.skipped}" + (f" ({rep.reason})" if rep.reason else "")
 
 
@@ -211,7 +228,7 @@ REGISTRY: dict[str, Tool] = {
     "pack_promote": Tool(_pack_promote, "ask", "Promote a pack if it passes.", "name"),
     "leads_find": Tool(_leads_find, "read", "Search Reddit for leads.", "query, limit?"),
     "leads_queue": Tool(_leads_queue, "read", "Leads waiting."),
-    "leads_draft": Tool(_leads_draft, "read", "Suggest a reply (never sends).", "lead_id, offers"),
+    "leads_draft": Tool(_leads_draft, "read", "Suggest a reply (never sends).", "lead_id"),
     "email_send_due": Tool(_email_send_due, "ask", "Send approved, capped outreach email."),
     "social_send": Tool(_never, "never", "Sending social messages is never automatic."),
 }

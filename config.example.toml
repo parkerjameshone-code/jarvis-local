@@ -1,0 +1,25 @@
+# Copy to ~/.jarvis/config.toml and fill in YOUR values. Never commit the real file.
+# Secrets (SMTP user/password, API keys) go in environment variables, not here:
+#   JARVIS_SMTP_USER, JARVIS_SMTP_PASSWORD
+
+ollama_url = "http://127.0.0.1:11434"   # local Ollama only
+model_budget_gb = 20                    # total size of installed models JARVIS may reach
+disk_reserve_gb = 5                     # free disk that must always remain
+
+# Folders JARVIS must never delete from (your code projects)
+project_dirs = ["C:/Users/you/projects"]
+
+# Outreach email (all required before anything is sent)
+email_daily_cap = 20
+email_from = "hello@example.test"
+unsubscribe_email = "hello@example.test"
+postal_address = "123 Example St, Example City"
+smtp_host = "smtp.example.test"
+smtp_port = 587
+
+# What JARVIS may offer when it drafts replies. Only these are ever mentioned.
+[[offers]]
+id = "offer-one"
+name = "Your Business: example service"
+description = "One plain sentence about who it helps and how."
+link = "https://example.test/book"
