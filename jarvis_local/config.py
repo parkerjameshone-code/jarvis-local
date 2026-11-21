@@ -17,6 +17,12 @@ class Config:
     model_budget_gb: float = 20
     disk_reserve_gb: float = 5
     email_daily_cap: int = 20
+    postal_address: str = ""
+    email_from: str = ""
+    unsubscribe_email: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    project_dirs: list = field(default_factory=list)
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Config":

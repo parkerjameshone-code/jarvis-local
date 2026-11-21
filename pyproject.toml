@@ -12,8 +12,11 @@ dependencies = ["psutil", "send2trash"]
 [project.optional-dependencies]
 dev = ["pytest"]
 
+[project.scripts]
+jarvis = "jarvis_local.cli:main"
+
 [tool.setuptools]
-packages = ["jarvis_local"]
+packages = ["jarvis_local", "jarvis_local.leads"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
